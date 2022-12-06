@@ -1,0 +1,453 @@
+'''
+TERMINOLOGY
+part_catalogue -        all parts available to choose from
+part_set -              the chosen set of a,b,c parts for a given combinatorial assembly. This is the genotype.
+library -               the set of all circuit assemblies that are produced from a given part_set
+library_phenotype -     all the circuit_phenotypes of a library
+circuit_attractor -     the all-node-circuit state attractor for a given input condition
+circuit_attractor_set - the 4 all-node-circuit state attractors for four input conditions (off-off, off-on, on-off, on-on)
+circuit_phenotype -     the two input truth-table for an individual circuit. This may contain cyclic attractors.
+true_logic -            a circuit phenotype that consists of only point attractor output states.
+logical_completeness -  the number of unique true_logic functions in a library_phenotype, up to a maximum of 16.
+logical_evolvability -  function of both logical completeness, and the library_phenotype standard deviation. 
+                        This is the fitness_function.
+'''
+
+import networkx as nx
+# import csv
+from numpy import std
+import itertools
+
+from deap import base 
+from deap import creator
+from deap import tools
+import random as rand
+
+
+###### VARIABLE SETUP #######
+### part_catalogue setup ###
+part_catalogue = {  
+                "pTac": "input_promoter",
+                "pTet": "input_promoter",
+                # "pBAD": "activatable_promoter", 
+                "pBAD": "repressible_promoter (roadblocking)", 
+                "pPhIF" :"repressible_promoter (roadblocking)", 
+                "pPsrA" :"repressible_promoter", 
+                "AraC": "TF", 
+                "PhIF": "TF",
+                "PsrA": "TF",
+                "tfSp": "TF",
+                "T10": "terminator"
+                }
+
+            
+
+TF_promoter_pairs = { 
+                        "pTac": None,
+                        "pTet": None,
+                        "pBAD": None,
+                        "pPsrA": None,
+                        "pPhIF": None,
+                        "AraC":"pBAD",
+                        "PhIF": "pPhIF",
+                        "PsrA":"pPsrA",
+                        "tfSp": None,
+                        "T10": None
+                        }
+
+
+### part_set setup ###
+# part_set_a, part_set_b, part_set_c = ['pTet', 'T10'], ['pBAD', 'pPsrA', 'pTac'], ['AraC', 'PsrA', 'tfSp']
+
+
+### SIMULATION FUNCTIONS ####
+########################################################################################################################
+
+### simulates a 2-level combinatorial golden gate assembly, where parts a,b,c are assembled, then 
+### sub assembles [abc], [abc] are assembled. output is a list of strings, which describe all possible circuits
+### that can be combinatorially assembled with the inputted part sets.
+def library_generator(part_set_a, part_set_b, part_set_c):
+
+
+    ## Create a_b subassembly library
+    a_b = list(itertools.product(part_set_a, part_set_b))
+    a_b = ['_'.join(i) for i in a_b]
+
+
+    # ## create a_b_c subassembly library
+    a_b_c =  list(itertools.product(a_b, part_set_c))
+    a_b_c = ['_'.join(i) for i in a_b_c]
+
+    # ## create abc_abc circuit library
+    library =  list(itertools.product(a_b_c, a_b_c))
+    library = ['_'.join(i) for i in library]
+    return library
+
+
+### this function returns a list of 4 lists, where each list is the attractor state of the circuit (all nodes), 
+### for 1 of the four input conditions (off-off, off-on, on-off, on-on) 
+def simulate_circuit_function(circuit_str, TF_promoter_pairs=TF_promoter_pairs, part_catalogue=part_catalogue, timesteps=10): 
+   
+    def extract_attractor_from_phenotype(phenotype):
+        attractor_indexes = []
+        for i,state in enumerate(phenotype):
+            if state == phenotype[-1]:
+                attractor_indexes.append(i)
+        if len(attractor_indexes) > 1:
+            attractor = phenotype[attractor_indexes[0]:attractor_indexes[1]]
+        else:
+            attractor = [phenotype[attractor_indexes[0]]]
+        return attractor
+
+    ##### CREATE NETWORK TOPOLOGY ######
+    ### turn circuit into list
+    circuit = circuit_str.split('_')
+    ### create edge_list
+    edge_list = []
+    ### linear edges
+    for i in range(len(circuit)-1):
+        # edge_list.append((circuit[i],circuit[i+1]))
+        edge_list.append((i,i+1))
+    ### add TF interactions
+    for i in range(len(circuit)):
+        for j in range(len(circuit)):
+            if TF_promoter_pairs[circuit[i]] == circuit[j]:
+                edge_list.append((i, j))
+    ### create graph
+    C = nx.DiGraph()
+    ### add nodes for each part 
+    for x in range(len(circuit)):
+        C.add_node(x, name=circuit[x], type=part_catalogue[circuit[x]], output=0)
+    C.add_edges_from(edge_list)
+
+    #### set circuit input states ####
+
+    input_combinations = [{"pTac": 0, "pTet": 0}, {"pTac": 0, "pTet": 1}, {"pTac": 1, "pTet": 0}, {"pTac": 1, "pTet": 1}]
+    phenotype_all_inputs = []
+
+    ### 4 INPUT STATES LOOP ##############################################
+    for input_i in range(len(input_combinations)):
+    
+    ### SINGLE INPUT STATE LOOP (LOOP THROUGH TIME) #################
+        circuit_states = []
+        while len(circuit_states) == len(set(circuit_states)) and len(circuit_states) < timesteps :   
+     
+        ### LOOOP THROUGH CIRCUIT NODES ##############################
+            for n in range(len(C)):                                                                     ### loop through network nodes (i.e. circuit parts)
+        ### input promoter rules (output is 1 if upstream state is 1, or external input is 1)
+                if C.nodes[n]['type'] == 'input_promoter':
+                    input_state =  input_combinations[input_i][C.nodes[n]['name']]
+                    upstream_state = [C.nodes[p]['output'] for p in list(C.predecessors(n))]
+
+                    ### extract value from upstream_state list, insert 0 if list is empty (i.e. for first part)     
+                    if not upstream_state:
+                        upstream_state = 0
+                    else:
+                        upstream_state = upstream_state[0]
+
+                    ### logic statement for part
+                    if input_state or upstream_state == 1:
+                        C.nodes[n]['output'] = 1
+                    else:   
+                       C.nodes[n]['output'] = 0
+        ### TF rules (flux unchanged between input and output)
+                elif C.nodes[n]['type'] == 'TF':
+                    upstream_state = [C.nodes[p]['output'] for p in list(C.predecessors(n))]
+
+                     ### extract value from upstream_state list, insert 0 if list is empty (i.e. for first part)            
+                    if not upstream_state:
+                        upstream_state = 0
+                    else:
+                        upstream_state = upstream_state[0]
+
+                    ### logic statement for part
+                    if upstream_state == 0:
+                        C.nodes[n]['output'] = 0
+                    else:   
+                       C.nodes[n]['output'] = 1
+
+        ### repressible_promoter rules
+                elif C.nodes[n]['type'] == 'repressible_promoter':
+                    connected_TF_states = [C.nodes[p]['output'] for p in list(C.predecessors(n))[1:]]
+                    upstream_state = [C.nodes[p]['output'] for p in list(C.predecessors(n))]
+                    ### extract value from upstream_state list, insert 0 if list is empty (i.e. for first part)            
+                    if not upstream_state:
+                        upstream_state = 0
+                    else:
+                        upstream_state = upstream_state[0]
+
+                    ### logic statement for part: if any connected TF's == 1, promoter out == 0.
+                    if any(out == 1 for out in connected_TF_states) and upstream_state == 0:
+                        C.nodes[n]['output'] = 0
+                    else:   
+                       C.nodes[n]['output'] = 1
+
+
+        ### repressible_promoter (roadblocking) rules
+                elif C.nodes[n]['type'] == 'repressible_promoter (roadblocking)':
+                    connected_TF_states = [C.nodes[p]['output'] for p in list(C.predecessors(n))[1:]]
+                    upstream_state = [C.nodes[p]['output'] for p in list(C.predecessors(n))]
+                    if not upstream_state:
+                        upstream_state = 0
+                    else:
+                        upstream_state = upstream_state[0]
+                    ### logic statement for part: if any connected TF's == 1, promoter out == 0.
+                    if any(out == 1 for out in connected_TF_states):
+                        C.nodes[n]['output'] = 0
+                    else:   
+                       C.nodes[n]['output'] = 1
+                                      
+        ### activatable promoter rules
+                elif C.nodes[n]['type'] == 'activatable_promoter':
+                    connected_TF_states = [C.nodes[p]['output'] for p in list(C.predecessors(n))[1:]]
+                    upstream_state = [C.nodes[p]['output'] for p in list(C.predecessors(n))]
+                    ### extract value from upstream_state list, insert 0 if list is empty (i.e. for first part)     
+                    if not upstream_state:
+                        upstream_state = 0
+                    else:
+                        upstream_state = upstream_state[0]
+
+                    ### logic statement for part
+                    if any(out == 1 for out in connected_TF_states) or upstream_state == 1:
+                        C.nodes[n]['output'] = 1
+                    else:   
+                       C.nodes[n]['output'] = 0
+        ### terminator rules
+                elif C.nodes[n]['type'] == 'activatable_promoter':   
+                    C.nodes[n]['output'] = 0
+
+        ### update circuit states ####
+            circuit_states.append(tuple(i[1] for i in C.nodes(data='output')))         ### full nodes output
+        attractor = extract_attractor_from_phenotype(circuit_states)
+
+        phenotype_all_inputs.append(attractor)
+    return phenotype_all_inputs
+
+
+### this simulate all the 2-input logic functions of a library and returns them as a list of dictionaries
+def simulate_library_phenotype(library, simulate_circuit_function=simulate_circuit_function, part_catalogue=part_catalogue):
+    output_list = []
+
+    for construct in range(len(library)):
+        circuit_str = library[construct]
+        ### use this block for writing to list (fast)
+        phenotype = simulate_circuit_function(circuit_str)
+
+        ### take extract attractors from final node in all input states to create output node phenotype
+        output_node_phenotype = {}
+        dict_keys= ['off off', 'off on', 'on off', 'on on']
+        for i in range(len(phenotype)):
+            output_node_phenotype.update({dict_keys[i]: [j[-1] for j in phenotype[i]]})
+            # output_node_phenotype.append([j[-1] for j in phenotype[i]])
+        
+        output_list.append(output_node_phenotype)
+        # print('output node phenotype:', output_node_phenotype)
+        
+    ### use this block instead simulafor writing to file ###
+        # output = simulate_circuit_function(circuit_str)
+        # with open(output_file, 'a', encoding='UTF8', newline='') as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow([circuit_str, output])
+    return output_list
+
+### split genome into a list of 3 lists, where the sub_lists are parts_a, parts_b, parts_c in order.
+def genome_to_part_sets(genome, subset_len=3):
+    part_sets = [genome[x:x+subset_len] for x in range(0,len(genome), subset_len)]
+    return part_sets
+
+### where genome is a list of 9 3x3 parts)
+def genome_to_library_phenotype(genome, genome_to_part_sets=genome_to_part_sets, library_generator=library_generator, simulate_library_phenotype=simulate_library_phenotype, part_catalogue=part_catalogue):
+    part_sets = genome_to_part_sets(genome)
+    library = library_generator(part_sets[0], part_sets[1], part_sets[2])
+    library_phenotype = simulate_library_phenotype(library)
+    return library_phenotype
+
+
+### logical evolvability is a float from number from 1-17, where the most sig fig is number of unique logic functions
+### created by library, and the .xx is the standard deviation of the library (i.e. how evenly distributed the logic)
+### functions are
+def logical_evolvability(library_phenotype):
+   ### turn into a list of strings
+    phenotype_str = []
+    for i in range(len(library_phenotype)):
+        phenotype_str.append(''.join(str(e) for e in library_phenotype[i].values()))  
+    ### extract circuit phenotypes which have no cyclic attractors
+    true_logics = [x for x in phenotype_str if len(x) == 12]
+    len(true_logics)
+    ### get unique logic functions from library phenotype
+    logic_set = tuple(set(true_logics))
+    ### count frequency of each logic function   
+    logic_freqs = [true_logics.count(i) for i in logic_set]
+    ### logical completeness is the number of unique logic gates in the library phenotype, out of max of 16
+    logical_completeness = len(logic_set)
+    std_dev = std(logic_freqs)
+    ### maximum possible standard deviation for the library
+    max_std_dev = len(library_phenotype)/2
+    ### fitness is defined that logical completeness takes precedence (e.g. a phenotype with 12 logic functions is 
+    ### always more fit than 11) followed by the std deviation - i.e. for the same logical completeness, a library with 
+    ### a more uniform distribution is fitter
+    logical_evolvability = logical_completeness + (1 - std_dev / max_std_dev)
+    # print('library functional completeness:', logical_completeness, '/16')
+    # print('library std deviation:', std_dev)
+    return (logical_evolvability,)
+
+
+
+
+### EVOLUTION FUNCTIONS #####
+########################################################################################################################
+
+### create a random string of parts of length n, selected from the part_catalogue provided
+def create_rand_genome(part_catalogue=part_catalogue, length=9):
+    part_catalogue = list(part_catalogue.keys())
+    rand_genome = [part_catalogue[rand.randint(0,len(part_catalogue)-1)] for x in range(length)]
+    return rand_genome_str
+
+
+def get_rand_part(part_catalogue=part_catalogue):
+    part_catalogue = list(part_catalogue.keys())
+    rand_part = part_catalogue[rand.randint(0,len(part_catalogue)-1)]
+    return rand_part
+
+
+
+### a mutation is replacing one of the 9 randomly selected parts with a new one from the part_catalogue
+def mutate_genome(genome, part_catalogue=part_catalogue):
+    part_catalogue = list(part_catalogue.keys())
+    genome[rand.randint(0,len(genome)-1)] = part_catalogue[rand.randint(0,len(part_catalogue)-1)]
+    return genome
+
+
+### DEAP toolbox setup
+def setup_toolbox(length=9, i=0,  indpb=0.05,  weights=(1.0,), tournsize=5, part_catalogue=part_catalogue):
+        creator.create("FitnessMax", base.Fitness, weights=weights)     
+        creator.create("genotype", list, fitness=creator.FitnessMax, phenotype=[])
+        # global toolbox
+        toolbox = base.Toolbox()
+        toolbox.register("rand_genome", create_rand_genome, part_catalogue)
+        toolbox.register("rand_part", get_rand_part, part_catalogue)
+        toolbox.register('make_individual', tools.initRepeat, creator.genotype, toolbox.rand_part, 9)
+        toolbox.register('make_population', tools.initRepeat, list, toolbox.make_individual)
+
+        toolbox.register('mate', tools.cxOnePoint)                                      ## register the crossover operator
+        toolbox.register('mutate', mutate_genome)                       ## register a mutation operator
+        toolbox.register("evaluate", logical_evolvability)
+        toolbox.register("select", tools.selTournament, tournsize=tournsize)
+        toolbox.register("selectBest", tools.selBest)
+        return toolbox
+
+### a standard GA mutate function   
+def mutate_pop(pop, toolbox, MUTPB=1):
+    for mutant in pop:                                                  ## Apply mutation on the offspring
+        if rand.random() < MUTPB:                                             ## mutate an individual with probability MUTPB
+            toolbox.mutate(mutant)
+            del mutant.fitness.values
+    return pop
+
+
+### a standard GA crossover function
+### pop=population to be crossed, 
+def crossover_pop(pop, toolbox, CXPB=1):
+    for child1, child2 in zip(pop[::2], pop[1::2]):                 ## Apply crossover on the offspring
+        if rand.random() < CXPB:                                              ## cross two individuals with probability CXP
+            toolbox.mate(child1, child2)
+            del child1.fitness.values
+            del child2.fitness.values
+    return pop
+
+
+### creates a list of individuals with invalid (i.e. empty) fitness values from a population.
+### Typically used on offspring to find individuals whose fitnesses have not yet been calculated for the next gen 
+def get_invalid_inds(offspring):
+    invalid_inds = [ind for ind in offspring if not ind.fitness.valid]
+    return invalid_inds 
+
+
+### applies the GP_map function to all individuals in the population and saves the output to ind.phenotype (i.e. pop[i].phenotype)
+### input is a population, uses the gp_function defined above.
+def gp_map_pop(pop, gp_function=genome_to_library_phenotype, part_catalogue=part_catalogue):
+    phenotypes = map(gp_function, pop)
+    for ind, phen in zip(pop, phenotypes):
+        ind.phenotype = phen
+
+def evaluate_pop(pop, evaluate_fun=logical_evolvability):
+    phenotype = [pop[i].phenotype for i in range(len(pop))]
+    fitnesses = map(evaluate_fun, phenotype)
+    for ind, fit in zip(pop, fitnesses):
+        ind.fitness.values = fit
+
+### prints useful stats to screen during evolution
+def print_stats(pop):
+    length = len(pop)
+    mean = sum(fits) / length
+    sum2 = sum(x*x for x in fits)
+
+    #print("  Min %s" % min(fits))
+    print('fittest genotype:', best_ind)
+    print("  Max %s" % max(fits))
+    #print("  Avg %s" % mean)
+
+
+
+##### DATA OUTPUT FUNCTIONS #####
+########################################################################################################################
+
+### saves a plot of fitness against generations
+def plot_gens_v_fitness(pop, output_folder_name):
+    import matplotlib.pyplot as plt 
+    import os
+
+    fitnesses = [ind[0].fitness.values[0] for ind in pop]
+    # print(fitnesses)
+    gens = range(len(pop))
+    # print(gens)
+    fig = plt.figure()
+    ax = plt.axes()
+    ax.plot(gens, fitnesses)
+    if not os.path.exists(output_folder_name):
+        os.makedirs(output_folder_name)
+    plt.savefig(output_folder_name+'/generation_v_best_fitness_plot.png')
+    # plt.show()    
+
+
+### converts best_of_gens - the GA output - which is a list of simevo individuals (objects of genotype class with phenotype and fitness attributes) into a pandas dataframe 
+### with the columns: | Genotype | Phenotype | Fitness |
+def create_best_of_gens_dataframe(best_of_gens):
+    import pandas as pd
+    list_best_of_gens = []
+    for i in range(len(best_of_gens)):
+        list_best_of_gens.append([list(best_of_gens[i][0]), list(best_of_gens[i][0].phenotype), float(best_of_gens[i][0].fitness.values[0])])
+
+    print(list_best_of_gens)
+
+    df_best_of_gens = pd.DataFrame(data=list_best_of_gens, columns = ['genotype', 'phenotype', 'fitness'])
+    print(df_best_of_gens)
+    return df_best_of_gens
+
+
+### function for saving data into a pickle file. This is used for saving the best_of_gens_dataframe which is the GA output data.
+def save_as_pickle(output_folder_name, data, filename):
+    import os
+    import pickle
+
+
+    if not os.path.exists(output_folder_name):
+        os.makedirs(output_folder_name)
+
+    with open(output_folder_name+filename, 'wb') as file:
+        pickle.dump(data, file)
+    file.close()
+
+### function to save metadata about algorithm parameters to a text file 
+def save_metadata(output_folder_name):
+    import os
+    if not os.path.exists(output_folder_name):
+        os.makedirs(output_folder_name)
+
+    file = open(output_folder_name+'/metadata.txt', 'w')
+    file.write('max gens: ' + str(max_gens) + '\n')
+    file.write('population size: '+str(pop_size) + '\n')
+    file.write('GP function: null function\n')
+    file.write('target: ' + str(target))
+    file.close()
+
