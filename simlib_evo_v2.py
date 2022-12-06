@@ -29,32 +29,67 @@ import random as rand
 part_catalogue = {  
                 "pTac": "input_promoter",
                 "pTet": "input_promoter",
-                # "pBAD": "activatable_promoter", 
-                "pBAD": "repressible_promoter (roadblocking)", 
+                "pBAD": "activatable_promoter (roadblocking)", 
+                "pTra*": "activatable_promoter",
                 "pPhIF" :"repressible_promoter (roadblocking)", 
+                "pBM3R1": "repressible_promoter (roadblocking)",
                 "pPsrA" :"repressible_promoter", 
-                "AraC": "TF", 
+                "pLmrA": "repressible_promoter",
+                "AraC": "TF",
+                "TraR(W)": "TF", 
                 "PhIF": "TF",
                 "PsrA": "TF",
+                "BM3R1": "TF",
+                "LmrA": "TF",
                 "tfSp": "TF",
-                "T10": "terminator"
-                }
+                "T10": "terminator",
 
-            
+                "pHlyIIR": "repressible_promoter",
+                "HlyIIR": "TF",
+                "pBetI":   "repressible_promoter",
+                "BetI": "TF"
+                }
 
 TF_promoter_pairs = { 
                         "pTac": None,
                         "pTet": None,
                         "pBAD": None,
+                        "pAAA": None,
                         "pPsrA": None,
                         "pPhIF": None,
+                        "pBM3R1": None,
+                        "pLmrA": None,
+                        "pTra*": None,
                         "AraC":"pBAD",
+                        "TraR(W)": "pTra*",
                         "PhIF": "pPhIF",
                         "PsrA":"pPsrA",
+                        "BM3R1": "pBM3R1",
+                        "LmrA": "pLmrA",
                         "tfSp": None,
-                        "T10": None
+                        "T10": None,
+                        
+                        "pHlyIIR": "HlyIIR",
+                        "HlyIIR": None,
+                        "pBetI":   "BetI",
+                        "BetI": None
                         }
 
+
+
+### MAKE COMPOUND PARTS ###
+def make_compound_parts(part_catalogue, n):
+    subsets = list(itertools.combinations(part_catalogue, n))
+    compound_parts = ["_".join(subsets[i]) for i, j in enumerate(subsets)]
+    compound_parts_dict = { i: None for i in compound_parts}
+    return compound_parts_dict
+
+### make an extended version of the part catalogue with compound parts included.
+compound_part_catalogue = make_compound_parts(part_catalogue, 1)
+double_parts = make_compound_parts(part_catalogue, 2)
+compound_part_catalogue.update(double_parts)
+
+####
 
 ### part_set setup ###
 # part_set_a, part_set_b, part_set_c = ['pTet', 'T10'], ['pBAD', 'pPsrA', 'pTac'], ['AraC', 'PsrA', 'tfSp']
@@ -298,21 +333,20 @@ def logical_evolvability(library_phenotype):
 ########################################################################################################################
 
 ### create a random string of parts of length n, selected from the part_catalogue provided
-def create_rand_genome(part_catalogue=part_catalogue, length=9):
+def create_rand_genome(part_catalogue=compound_part_catalogue, length=9):
     part_catalogue = list(part_catalogue.keys())
     rand_genome = [part_catalogue[rand.randint(0,len(part_catalogue)-1)] for x in range(length)]
     return rand_genome_str
 
 
-def get_rand_part(part_catalogue=part_catalogue):
+def get_rand_part(part_catalogue=compound_part_catalogue):
     part_catalogue = list(part_catalogue.keys())
     rand_part = part_catalogue[rand.randint(0,len(part_catalogue)-1)]
     return rand_part
 
 
-
 ### a mutation is replacing one of the 9 randomly selected parts with a new one from the part_catalogue
-def mutate_genome(genome, part_catalogue=part_catalogue):
+def mutate_genome(genome, part_catalogue=compound_part_catalogue):
     part_catalogue = list(part_catalogue.keys())
     genome[rand.randint(0,len(genome)-1)] = part_catalogue[rand.randint(0,len(part_catalogue)-1)]
     return genome
@@ -324,8 +358,8 @@ def setup_toolbox(length=9, i=0,  indpb=0.05,  weights=(1.0,), tournsize=5, part
         creator.create("genotype", list, fitness=creator.FitnessMax, phenotype=[])
         # global toolbox
         toolbox = base.Toolbox()
-        toolbox.register("rand_genome", create_rand_genome, part_catalogue)
-        toolbox.register("rand_part", get_rand_part, part_catalogue)
+        toolbox.register("rand_genome", create_rand_genome)
+        toolbox.register("rand_part", get_rand_part)
         toolbox.register('make_individual', tools.initRepeat, creator.genotype, toolbox.rand_part, 9)
         toolbox.register('make_population', tools.initRepeat, list, toolbox.make_individual)
 
