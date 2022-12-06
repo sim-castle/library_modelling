@@ -68,11 +68,11 @@ TF_promoter_pairs = {
                         "LmrA": "pLmrA",
                         "tfSp": None,
                         "T10": None,
-                        
-                        "pHlyIIR": "HlyIIR",
-                        "HlyIIR": None,
-                        "pBetI":   "BetI",
-                        "BetI": None
+
+                        "pHlyIIR": None,
+                        "HlyIIR": "pHlyIIR",
+                        "pBetI":   None,
+                        "BetI": "pBetI"
                         }
 
 
@@ -81,13 +81,12 @@ TF_promoter_pairs = {
 def make_compound_parts(part_catalogue, n):
     subsets = list(itertools.combinations(part_catalogue, n))
     compound_parts = ["_".join(subsets[i]) for i, j in enumerate(subsets)]
-    compound_parts_dict = { i: None for i in compound_parts}
-    return compound_parts_dict
+    # compound_parts_dict = {i: None for i in compound_parts}
+    return compound_parts
 
-### make an extended version of the part catalogue with compound parts included.
-compound_part_catalogue = make_compound_parts(part_catalogue, 1)
-double_parts = make_compound_parts(part_catalogue, 2)
-compound_part_catalogue.update(double_parts)
+### make an extended version of the part catalogue with compound parts included. This is to be used for genotype generation.
+compound_part_catalogue = make_compound_parts(part_catalogue, 1) + make_compound_parts(part_catalogue, 2) + make_compound_parts(part_catalogue, 3)
+compound_part_catalogue = {i: None for i in compound_part_catalogue}
 
 ####
 
@@ -286,7 +285,8 @@ def simulate_library_phenotype(library, simulate_circuit_function=simulate_circu
     return output_list
 
 ### split genome into a list of 3 lists, where the sub_lists are parts_a, parts_b, parts_c in order.
-def genome_to_part_sets(genome, subset_len=3):
+def genome_to_part_sets(genome, num_subsets=3):
+    subset_len = int(len(genome)/num_subsets)
     part_sets = [genome[x:x+subset_len] for x in range(0,len(genome), subset_len)]
     return part_sets
 
@@ -332,7 +332,7 @@ def logical_evolvability(library_phenotype):
 ### EVOLUTION FUNCTIONS #####
 ########################################################################################################################
 
-### create a random string of parts of length n, selected from the part_catalogue provided
+### create a random string of parts of length n, selected from the part_catalogue provided. Length must be multiple of 3.
 def create_rand_genome(part_catalogue=compound_part_catalogue, length=9):
     part_catalogue = list(part_catalogue.keys())
     rand_genome = [part_catalogue[rand.randint(0,len(part_catalogue)-1)] for x in range(length)]
@@ -353,14 +353,14 @@ def mutate_genome(genome, part_catalogue=compound_part_catalogue):
 
 
 ### DEAP toolbox setup
-def setup_toolbox(length=9, i=0,  indpb=0.05,  weights=(1.0,), tournsize=5, part_catalogue=part_catalogue):
+def setup_toolbox(length=9, i=0,  indpb=0.05,  weights=(1.0,), tournsize=5, part_catalogue=part_catalogue, genome_length=9):
         creator.create("FitnessMax", base.Fitness, weights=weights)     
         creator.create("genotype", list, fitness=creator.FitnessMax, phenotype=[])
         # global toolbox
         toolbox = base.Toolbox()
         toolbox.register("rand_genome", create_rand_genome)
         toolbox.register("rand_part", get_rand_part)
-        toolbox.register('make_individual', tools.initRepeat, creator.genotype, toolbox.rand_part, 9)
+        toolbox.register('make_individual', tools.initRepeat, creator.genotype, toolbox.rand_part, genome_length)
         toolbox.register('make_population', tools.initRepeat, list, toolbox.make_individual)
 
         toolbox.register('mate', tools.cxOnePoint)                                      ## register the crossover operator
