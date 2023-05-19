@@ -1,0 +1,15 @@
+from_partname,type,to_partname,arrowhead_length,linestyle,linewidth,color
+AmeR,Repression,pAmeR,2,-,,1.00;0.00;0.00
+HlyllR,Repression,pHlyllR,2,-,,1.00;0.00;0.00
+PhIF,Repression,pPhIF,2,-,,1.00;0.00;0.00
+AmtR,Repression,pAmtR,2,-,,1.00;0.00;0.00
+IcaRA,Repression,pIcaRA,2,-,,1.00;0.00;0.00
+PsrA,Repression,pPsrA,2,-,,1.00;0.00;0.00
+BetI,Repression,pBetI,2,-,,1.00;0.00;0.00
+LitR,Repression,pLitR,2,-,,1.00;0.00;0.00
+QacR,Repression,pQacR,2,-,,1.00;0.00;0.00
+BM3R1,Repression,pBM3R1,2,-,,1.00;0.00;0.00
+LmrA,Repression,pLmrA,2,-,,1.00;0.00;0.00
+SrpR,Repression,pSrpR,2,-,,1.00;0.00;0.00
+AraC,Activation,pBAD,2,-,,0.00;1.00;0.00
+TraR(W),Activation,pTra*,2,-,,0.00;1.00;0.00

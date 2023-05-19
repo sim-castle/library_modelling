@@ -6,13 +6,8 @@ PATH = "C:/Users/simca/Google_Drive/WORK/Phd_project/Experimental/Fun-Landscapes
 
 ### part_sets: this is the input 
 
-### generator 288 ###
-part_set_a, part_set_b, part_set_c = ['pTac_SrpR', 'AraC_PhIF'], ['pTet_pTac_TSrpR_BM3R1', 'pTet_pTac_TSrpR', 'pTet', 'pSrpR_pTra', 'pTac_TSrpR', 'spacer3', 'pSrpR_pBAD'], ['spacer2', 'pTra', 'TrarW', 'pTet_BM3R1_pBM3R1_pBAD', 'pTet_TPhIF', 'pTet_BM3R1_pBM3R1', 'BM3R1', 'pTac_TPhIF', 'pTet']
-
 ### part_set 1 ###
 part_set_a, part_set_b, part_set_c = ['pTet', 'T10'], ['pBAD', 'pPsrA', 'pTac'], ['AraC', 'PsrA', 'tfSp']
-
-
 
 ### best 3x3 part set cound by GA so far ###
 
@@ -57,12 +52,22 @@ fitness = sl.logical_evolvability(library_phenotype)
 print('library fitness', fitness)
 
 
+### compress logic gates with internal attractors (i.e. repeated attractors on the output), into point attractors
+logics_with_internal_attractors = []
+for i in range(len(library_phenotype)):
+    logics_with_internal_attractors.append([set(i) for i in library_phenotype[i].values()])    ### make repeated attractor states into single-state e.g. [[0], [1], [0,0], [1,1]] becomes [{0}, {1}, {0}, {1}]    
 
 ### turn library_phenotype into list of strings
-phenotype_str = []
+phenotype_str = []   
+for i in range(len(library_phenotype)):         
+    phenotype_str.append(''.join(str(e) for e in logics_with_internal_attractors[i]))
 
-for i in range(len(library_phenotype)):
-    phenotype_str.append(''.join(str(e) for e in library_phenotype[i].values()))  
+print(phenotype_str[0])
+
+for i in range(len(phenotype_str)): 
+    phenotype_str[i] = phenotype_str[i].replace("{", "[")
+    phenotype_str[i] = phenotype_str[i].replace("}", "]")
+
 
 print("phenotype_str: ", phenotype_str)
 
@@ -70,7 +75,7 @@ print("phenotype_str: ", phenotype_str)
 ### save library phenotype to csv ###
 library_phenotype_df = pd.DataFrame(zip(library, phenotype_str), columns=["construct_name", "function"])
 print(library_phenotype_df)
-# library_phenotype_df.to_csv(PATH+"library_phenotype.csv", header=True, mode="w")
+library_phenotype_df.to_csv(PATH+"library_phenotype_internal_oscillators_included.csv", header=True, mode="w")
 
 
 ### true_logics are those with only point attractors

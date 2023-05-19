@@ -22,6 +22,8 @@ from deap import base
 from deap import creator
 from deap import tools
 import random as rand
+from scipy.stats import entropy
+
 
 
 ###### VARIABLE SETUP #######
@@ -79,14 +81,22 @@ TF_promoter_pairs = {
 
 ### MAKE COMPOUND PARTS ###  this functions makes combinations of length n of all the small parts in the library (i.e. everything but the TFs)
 def make_compound_parts(part_catalogue, n):
-    small_parts = {key:value for (key,value) in part_catalogue.items() if value != "TF"}          ### filter out all the TFs
+    # small_parts = {key:value for (key,value) in part_catalogue.items() if value != "TF"}          ### filter out all the TFs
+    small_parts = part_catalogue                                                                    ### remove small parts filter so it's easier to explain in thesis.
     subsets = list(itertools.combinations(small_parts, n))                                          ### get all combinations of length n
     compound_parts = ["_".join(subsets[i]) for i, j in enumerate(subsets)]                          ### join combinations to create compound-parts of length n
-    compound_parts_dict = {i: None for i in compound_parts}
+    # compound_parts_dict = {i: None for i in compound_parts}
     return compound_parts
 
 ### make an extended version of the part catalogue with compound parts included. This is to be used for genotype generation.
-compound_part_list = list(part_catalogue.keys()) + make_compound_parts(part_catalogue, 2) + make_compound_parts(part_catalogue, 3)
+### Triple Parts
+# compound_part_list = list(part_catalogue.keys()) + make_compound_parts(part_catalogue, 2) + make_compound_parts(part_catalogue, 3)
+### Double Parts
+compound_part_list = list(part_catalogue.keys()) + make_compound_parts(part_catalogue, 2)
+### Single Parts
+# compound_part_list = list(part_catalogue.keys())
+
+
 compound_part_list = {i: None for i in compound_part_list}
 
 ### disallow compound parts
@@ -287,6 +297,31 @@ def simulate_library_phenotype(library, simulate_circuit_function=simulate_circu
         #     writer.writerow([circuit_str, output])
     return output_list
 
+### this simulate all the 2-input logic functions of a library and returns them as a list of lists
+def simulate_library_phenotype_list(library, simulate_circuit_function=simulate_circuit_function, part_catalogue=part_catalogue):
+    output_list = []
+
+    for construct in range(len(library)):
+        circuit_str = library[construct]
+        ### use this block for writing to list (fast)
+        phenotype = simulate_circuit_function(circuit_str)
+
+        ### take extract attractors from final node in all input states to create output node phenotype
+        output_node_phenotype = []
+        for i in range(len(phenotype)):
+            output_node_phenotype.append([j[-1] for j in phenotype[i]])
+            # output_node_phenotype.append([j[-1] for j in phenotype[i]])
+        
+        output_list.append(output_node_phenotype)
+        # print('output node phenotype:', output_node_phenotype)
+        
+    ### use this block instead for writing to file ###
+        # output = simulate_circuit_function(circuit_str)
+        # with open(output_file, 'a', encoding='UTF8', newline='') as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow([circuit_str, output])
+    return output_list
+
 
 ### simluates all 2-input logic functions of library and returns a list of 2d lists, where each list is the states of all the parts of the circuit
 def simulate_library_full_phenotype(library, simulate_circuit_function=simulate_circuit_function, part_catalogue=part_catalogue):
@@ -306,7 +341,7 @@ def genome_to_part_sets(genome, num_subsets=3):
     return part_sets
 
 ### where genome is a list of 9 3x3 parts)
-def genome_to_library_phenotype(genome, genome_to_part_sets=genome_to_part_sets, library_generator=library_generator, simulate_library_phenotype=simulate_library_phenotype, part_catalogue=part_catalogue):
+def genome_to_library_phenotype(genome, genome_to_part_sets=genome_to_part_sets, library_generator=library_generator, simulate_library_phenotype=simulate_library_phenotype_list, part_catalogue=part_catalogue):
     part_sets = genome_to_part_sets(genome)
     library = library_generator(part_sets[0], part_sets[1], part_sets[2])
     library_phenotype = simulate_library_phenotype(library)
@@ -341,6 +376,60 @@ def logical_evolvability(library_phenotype):
     # print('library std deviation:', std_dev)
     return (logical_evolvability,)
 
+def function_distribution(library_phenotype):
+    ### calculate distribution
+    ### create a list of frequencies of each logic function, in the order seen in the dict.
+    function_names = {
+    'FALSE': [[0], [0], [0], [0]],
+    'AND': [[0], [0], [0], [1]],
+    'A_ANDN_B': [[0], [0], [1], [0]],
+    'A': [[0], [0], [1], [1]],
+    'B_ANDN_A': [[0], [1], [0], [0]],
+    'B': [[0], [1], [0], [1]],
+    'XOR': [[0], [1], [1], [0]],
+    'OR': [[0], [1], [1], [1]],
+    'NOR': [[1], [0], [0], [0]],
+    'EQUALS': [[1], [0], [0], [1]],
+    'NOT_B': [[1], [0], [1], [0]],
+    'A_ORN_B': [[1], [0], [1], [1]],
+    'NOT_A': [[1], [1], [0], [0]],
+    'B_ORN_A': [[1], [1], [0], [1]],
+    'NAND': [[1], [1], [1], [0]],
+    'TRUE': [[1], [1], [1], [1]],
+    'CYCLIC': None
+    }
+    logic_function_counts = []
+    for key in function_names:
+            logic_function_counts.append(library_phenotype.count(function_names[key]))
+    cyclic_funs_count = len(library_phenotype) - sum(logic_function_counts)
+    logic_function_counts[-1] = cyclic_funs_count
+    return logic_function_counts
+
+def num_logics(logic_function_counts):
+   return len([num for num in logic_function_counts[0:-1] if num != 0])
+
+def num_logics_fitness(library_phenotype):
+    logic_function_counts = function_distribution(library_phenotype)
+    num_funs = num_logics(logic_function_counts)
+    return (num_funs,)
+
+def entropy_fitness(library_phenotype):
+    logic_function_counts = function_distribution(library_phenotype)
+    entropy_fitness = entropy(logic_function_counts, base=2)
+    return (entropy_fitness,)
+
+def hybrid_fitness(library_phenotype):
+    logic_function_counts = function_distribution(library_phenotype)
+    num_funs_component = num_logics(logic_function_counts)
+    shannon_component = entropy_fitness = entropy(logic_function_counts, base=2)/10
+    return (num_funs_component+shannon_component,)
+
+
+
+
+
+
+
 
 
 
@@ -348,12 +437,14 @@ def logical_evolvability(library_phenotype):
 ########################################################################################################################
 
 ### create a random string of parts of length n, selected from the part_catalogue provided. Length must be multiple of 3.
+# def create_rand_genome(part_catalogue=part_catalogue, length=9):
 def create_rand_genome(part_catalogue=compound_part_list, length=9):
     part_catalogue = list(part_catalogue.keys())
     rand_genome = [part_catalogue[rand.randint(0,len(part_catalogue)-1)] for x in range(length)]
     return rand_genome
 
 
+# def get_rand_part(part_catalogue=part_catalogue):
 def get_rand_part(part_catalogue=compound_part_list):
     part_catalogue = list(part_catalogue.keys())
     rand_part = part_catalogue[rand.randint(0,len(part_catalogue)-1)]
@@ -361,6 +452,7 @@ def get_rand_part(part_catalogue=compound_part_list):
 
 
 ### a mutation is replacing one of the 9 randomly selected parts with a new one from the part_catalogue
+# def mutate_genome(genome, part_catalogue=part_catalogue):
 def mutate_genome(genome, part_catalogue=compound_part_list):
     part_catalogue = list(part_catalogue.keys())
     genome[rand.randint(0,len(genome)-1)] = part_catalogue[rand.randint(0,len(part_catalogue)-1)]

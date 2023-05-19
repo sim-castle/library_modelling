@@ -30,24 +30,30 @@ part_catalogue = {
                 "pTac": "input_promoter",
                 "pTet": "input_promoter",
                 "pBAD": "activatable_promoter", 
-                "pTra*": "activatable_promoter",
+                "pTra": "activatable_promoter",
                 "pPhIF" :"repressible_promoter (roadblocking)", 
                 "pBM3R1": "repressible_promoter (roadblocking)",
+                "pSrpR": "repressible_promoter (roadblocking)",
                 "pPsrA" :"repressible_promoter", 
                 "pLmrA": "repressible_promoter",
                 "AraC": "TF",
-                "TraR(W)": "TF", 
+                "TraRW": "TF", 
                 "PhIF": "TF",
                 "PsrA": "TF",
                 "BM3R1": "TF",
                 "LmrA": "TF",
-                "tfSp": "TF",
+                "spacer1": "TF",
+                "spacer2": "TF",
+                "spacer3": "TF",
+                "SrpR": "TF",
                 "T10": "terminator",
 
                 "pHlyIIR": "repressible_promoter",
                 "HlyIIR": "TF",
                 "pBetI":   "repressible_promoter",
-                "BetI": "TF"
+                "BetI": "TF",
+
+                "TSrpR": "TF"
                 }
 
 TF_promoter_pairs = { 
@@ -59,20 +65,25 @@ TF_promoter_pairs = {
                         "pPhIF": None,
                         "pBM3R1": None,
                         "pLmrA": None,
-                        "pTra*": None,
+                        "pTra": None,
                         "AraC":"pBAD",
-                        "TraR(W)": "pTra*",
+                        "TraRW": "pTra",
                         "PhIF": "pPhIF",
                         "PsrA":"pPsrA",
                         "BM3R1": "pBM3R1",
                         "LmrA": "pLmrA",
-                        "tfSp": None,
+                        "SrpR": "pSrpR",
+                        "spacer1": None,
+                        "spacer2": None,
+                        "spacer3": None,
                         "T10": None,
 
                         "pHlyIIR": None,
                         "HlyIIR": "pHlyIIR",
                         "pBetI":   None,
-                        "BetI": "pBetI"
+                        "BetI": "pBetI",
+
+                        "TSrpR": None
                         }
 
 
@@ -82,15 +93,13 @@ def make_compound_parts(part_catalogue, n):
     small_parts = {key:value for (key,value) in part_catalogue.items() if value != "TF"}          ### filter out all the TFs
     subsets = list(itertools.combinations(small_parts, n))                                          ### get all combinations of length n
     compound_parts = ["_".join(subsets[i]) for i, j in enumerate(subsets)]                          ### join combinations to create compound-parts of length n
-    compound_parts_dict = {i: None for i in compound_parts}
+    # compound_parts_dict = {i: None for i in compound_parts}
     return compound_parts
 
 ### make an extended version of the part catalogue with compound parts included. This is to be used for genotype generation.
 compound_part_list = list(part_catalogue.keys()) + make_compound_parts(part_catalogue, 2) + make_compound_parts(part_catalogue, 3)
 compound_part_list = {i: None for i in compound_part_list}
 
-### disallow compound parts
-# compound_part_list = make_compound_parts(part_catalogue, 1)
 ####
 
 ### part_set setup ###
@@ -351,7 +360,7 @@ def logical_evolvability(library_phenotype):
 def create_rand_genome(part_catalogue=compound_part_list, length=9):
     part_catalogue = list(part_catalogue.keys())
     rand_genome = [part_catalogue[rand.randint(0,len(part_catalogue)-1)] for x in range(length)]
-    return rand_genome
+    return rand_genome_str
 
 
 def get_rand_part(part_catalogue=compound_part_list):
